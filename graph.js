@@ -1,163 +1,152 @@
-"use strict";
+'use strict';
 
-const dims = { height: 300, width: 300, radius: 150 };
-const cent = { x: dims.width / 2 + 5, y: dims.height / 2 + 5 };
+const margin = { top: 40, right: 20, bottom: 50, left: 100 };
+const graphWidth = 560 - margin.left - margin.right;
+const graphHeight = 400 - margin.top - margin.bottom;
 
 const svg = d3
-  .select(".canvas")
-  .append("svg")
-  .attr("width", dims.width + 150)
-  .attr("height", dims.height + 150);
+  .select('.canvas')
+  .append('svg')
+  .attr('width', graphWidth + margin.left + margin.right)
+  .attr('height', graphHeight + margin.top + margin.bottom);
 
 const graph = svg
-  .append("g")
-  .attr("transform", `translate(${cent.x}, ${cent.y})`);
+  .append('g')
+  .attr('width', graphWidth)
+  .attr('height', graphHeight)
+  .attr('transform', `translate(${margin.left}, ${margin.top})`);
 
-const pie = d3
-  .pie()
-  .sort(null)
-  .value((d) => d.cost);
+const x = d3.scaleTime().range([0, graphWidth]);
+const y = d3.scaleLinear().range([graphHeight, 0]);
 
-const arcPath = d3
-  .arc()
-  .outerRadius(dims.radius)
-  .innerRadius(dims.radius / 2);
+const xAxisGroup = graph
+  .append('g')
+  .attr('class', 'x-axis')
+  .attr('transform', 'translate(0, ' + graphHeight + ')');
 
-const colour = d3.scaleOrdinal(d3["schemeSet3"]);
+const yAxisGroup = graph.append('g').attr('class', 'y-axis');
 
-const legendGroup = svg
-  .append("g")
-  .attr("transform", `translate(${dims.width + 40}, 10)`);
-
-const legend = d3
-  .legendColor()
-  .shape("path", d3.symbol())
-  .shapePadding(10)
-  .scale(colour);
-
-const tip = d3
-  .tip()
-  .attr("class", "tip card")
-  .html((d) => {
-    let content = `<div class='name'>${d.data.name}</div>`;
-    content += `<div class='cost'>€${d.data.cost}</div>`;
-    content += `<div class='delete'>Click slice to delete</div>`;
-    return content;
+const line = d3
+  .line()
+  .x(function (d) {
+    return x(new Date(d.date));
+  })
+  .y(function (d) {
+    return y(d.distance);
   });
 
-graph.call(tip);
+const path = graph.append('path');
 
-const update = (data) => {
-  colour.domain(data.map((d) => d.name));
+const dottedLines = graph
+  .append('g')
+  .attr('class', 'lines')
+  .style('opacity', 0);
 
-  legendGroup.call(legend);
-  legendGroup.selectAll("text").attr("fill", "white");
+const xDottedLine = dottedLines
+  .append('line')
+  .attr('stroke', '#aaa')
+  .attr('stroke-width', 1)
+  .attr('stroke-dasharray', 4);
 
-  const paths = graph.selectAll("path").data(pie(data));
+const yDottedLine = dottedLines
+  .append('line')
+  .attr('stroke', '#aaa')
+  .attr('stroke-width', 1)
+  .attr('stroke-dasharray', 4);
 
-  paths.exit().transition().duration(750).attrTween("d", arcTweenExit).remove();
+const update = data => {
+  data = data.filter(item => item.activity == activity);
 
-  paths
-    .attr("d", arcPath)
-    .transition()
-    .duration(750)
-    .attrTween("d", arcTweenUpdate);
+  data.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  paths
+  x.domain(d3.extent(data, d => new Date(d.date)));
+  y.domain([0, d3.max(data, d => d.distance)]);
+
+  path
+    .data([data])
+    .attr('fill', 'none')
+    .attr('stroke', '#00bfa5')
+    .attr('stroke-width', 2)
+    .attr('d', line);
+
+  const circles = graph.selectAll('circle').data(data);
+
+  circles.exit().remove();
+
+  circles.attr('cx', d => x(new Date(d.date))).attr('cy', d => y(d.distance));
+
+  circles
     .enter()
-    .append("path")
-    .attr("class", "arc")
-    .attr("stroke", "#fff")
-    .attr("stroke-width", 3)
-    .attr("d", arcPath)
-    .attr("fill", (d) => colour(d.data.name))
-    .each(function (d) {
-      this._current = d;
-    })
-    .transition()
-    .duration(750)
-    .attrTween("d", arcTweenEnter);
+    .append('circle')
+    .attr('r', 4)
+    .attr('cx', d => x(new Date(d.date)))
+    .attr('cy', d => y(d.distance))
+    .attr('fill', '#ccc');
 
   graph
-    .selectAll("path")
-    .on("mouseover", (d, i, n) => {
-      tip.show(d, n[i]);
-      handleMouseOver(d, i, n);
+    .selectAll('circle')
+    .on('mouseover', (d, i, n) => {
+      d3.select(n[i])
+        .transition()
+        .duration(100)
+        .attr('r', 8)
+        .attr('fill', '#fff');
+
+      xDottedLine
+        .attr('x1', x(new Date(d.date)))
+        .attr('x2', x(new Date(d.date)))
+        .attr('y1', graphHeight)
+        .attr('y2', y(d.distance));
+
+      yDottedLine
+        .attr('x1', 0)
+        .attr('x2', x(new Date(d.date)))
+        .attr('y1', y(d.distance))
+        .attr('y2', y(d.distance));
+
+      dottedLines.style('opacity', 1);
     })
-    .on("mouseout", (d, i, n) => {
-      tip.hide();
-      handleMouseOut(d, i, n);
-    })
-    .on("click", handleClick);
+    .on('mouseleave', (d, i, n) => {
+      d3.select(n[i])
+        .transition()
+        .duration(100)
+        .attr('r', 4)
+        .attr('fill', '#ccc');
+
+      dottedLines.style('opacity', 0);
+    });
+
+  const xAxis = d3.axisBottom(x).ticks(4).tickFormat(d3.timeFormat('%b %d'));
+
+  const yAxis = d3
+    .axisLeft(y)
+    .ticks(4)
+    .tickFormat(d => d + 'm');
+
+  xAxisGroup.call(xAxis);
+  yAxisGroup.call(yAxis);
 };
 
 var data = [];
 
-db.collection("expenses")
-  .orderBy("cost")
-  .onSnapshot((res) => {
-    res.docChanges().forEach((change) => {
-      const doc = { ...change.doc.data(), id: change.doc.id };
+db.collection('activities').onSnapshot(res => {
+  res.docChanges().forEach(change => {
+    const doc = { ...change.doc.data(), id: change.doc.id };
 
-      switch (change.type) {
-        case "added":
-          data.push(doc);
-          break;
-        case "modified":
-          const index = data.findIndex((item) => item.id == doc.id);
-          data[index] = doc;
-          break;
-        case "removed":
-          data = data.filter((item) => item.id !== doc.id);
-          break;
-        default:
-          break;
-      }
-    });
-    update(data);
+    switch (change.type) {
+      case 'added':
+        data.push(doc);
+        break;
+      case 'modified':
+        const index = data.findIndex(item => item.id == doc.id);
+        data[index] = doc;
+        break;
+      case 'removed':
+        data = data.filter(item => item.id !== doc.id);
+        break;
+      default:
+        break;
+    }
   });
-
-const arcTweenEnter = (d) => {
-  var i = d3.interpolate(d.endAngle - 0.1, d.startAngle);
-
-  return function (t) {
-    d.startAngle = i(t);
-    return arcPath(d);
-  };
-};
-
-const arcTweenExit = (d) => {
-  var i = d3.interpolate(d.startAngle, d.endAngle);
-
-  return function (t) {
-    d.startAngle = i(t);
-    return arcPath(d);
-  };
-};
-
-function arcTweenUpdate(d) {
-  var i = d3.interpolate(this._current, d);
-  this._current = i(1);
-  return function (t) {
-    return arcPath(i(t));
-  };
-}
-
-const handleMouseOver = (d, i, n) => {
-  d3.select(n[i])
-    .transition("changeSliceFill")
-    .duration(300)
-    .attr("fill", "#fff");
-};
-
-const handleMouseOut = (d, i, n) => {
-  d3.select(n[i])
-    .transition("changeSliceFill")
-    .duration(300)
-    .attr("fill", colour(d.data.name));
-};
-
-const handleClick = (d) => {
-  const id = d.data.id;
-  db.collection("expenses").doc(id).delete();
-};
+  update(data);
+});
